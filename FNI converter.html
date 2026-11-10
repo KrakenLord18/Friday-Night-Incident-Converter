@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tomophobia FNI Paste Converter</title>
+    <title>Tomophobia FNI Paste Converter (Filtered)</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -75,18 +75,6 @@
             font-size: 0.9rem;
             line-height: 1.4;
         }
-        #inputJson {
-            color: #ffaa00;
-        }
-        button {
-            padding: 15px;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
         .btn-translate { background-color: #ffaa00; color: #0c0c10; width: 100%; margin-top: 10px; }
         .btn-copy { background-color: #8b5cf6; color: white; flex: 1; }
         .btn-download { background-color: #ff3344; color: white; flex: 1; }
@@ -99,14 +87,14 @@
 
 <div class="container">
     <h1>Tomophobia FNI Paste Converter</h1>
-    <p>Paste your chart code text directly into the left column box below, then click translate to parse your tracks sequentially.</p>
+    <p>Paste your chart code text into the left box. This version automatically detects and removes special custom items like <strong>Grafter Notes</strong>.</p>
     
     <div id="status" class="status-badge">SYSTEM STATUS: READY (Awaiting JSON Data Input)</div>
 
     <div class="panels-wrapper">
         <div class="panel">
             <label for="inputJson">1. Paste Raw FNF JSON Content Here:</label>
-            <textarea id="inputJson" placeholder='Paste your whole JSON tree here... (e.g. {"version": "2.0.0", "notes": ...})'></textarea>
+            <textarea id="inputJson" placeholder='Paste your whole JSON tree here...'></textarea>
             <button id="translateBtn" class="btn-translate">Translate Pasted Text ➔</button>
         </div>
         
@@ -180,48 +168,49 @@
                 return;
             }
 
-            // Sort everything sequentially by timestamp
             globalExtractedNotes.sort((a, b) => a.time - b.time);
             renderOutput(globalExtractedNotes);
         }
 
         function extractFromNoteArray(arr) {
+            let skippedCount = 0;
             arr.forEach((item) => {
                 if (item && typeof item === 'object' && item.hasOwnProperty('t') && item.hasOwnProperty('d')) {
+                    
+                    // CRITICAL FILTER MECHANIC:
+                    // If the item contains a "k" key (like "k": "Grafter Note") or a custom "type" attribute,
+                    // we immediately discard it so it doesn't clutter your normal arrow streams.
+                    if (item.hasOwnProperty('k') || item.hasOwnProperty('type')) {
+                        skippedCount++;
+                        return; 
+                    }
+
                     let time = parseFloat(item.t);
                     let rawLane = parseInt(item.d);
                     let length = parseFloat(item.l) || 0;
 
                     if (!isNaN(time) && !isNaN(rawLane)) {
-                        // SIDE SWAP ALIGNMENT BLUEPRINT:
-                        // Reverses note positioning channels (0-3 Enemy ↔ 4-7 Player)
                         let fixedLane = 0;
                         if (rawLane <= 3) {
-                            fixedLane = rawLane + 4; // Move Opponent to lanes 4-7
+                            fixedLane = rawLane + 4; 
                         } else {
-                            fixedLane = rawLane - 4; // Move Player to lanes 0-3
+                            fixedLane = rawLane - 4; 
                         }
 
-                        // Shift to base-1 index boundaries for Scratch lists (1-8)
                         let scratchLane = fixedLane + 1;
-
                         globalExtractedNotes.push({ time, lane: scratchLane, length });
                     }
                 }
             });
+            console.log("Filtered out " + skippedCount + " special/mechanic notes.");
         }
 
         function renderOutput(notes) {
             let outputLines = [];
 
             notes.forEach(n => {
-                // Time gets scaled down into fractional seconds
                 let secondsTime = n.time / 1000;
-                
-                // Sustain length remains raw ms
                 let holdMsLength = n.length;
-
-                // Output Format layout style matching requirements: {Time}: {Lane}: {0}: {Length}
                 outputLines.push(`{${secondsTime.toFixed(3)}}: {${n.lane}}: {0}: {${holdMsLength.toFixed(3)}}`);
             });
 
@@ -229,7 +218,7 @@
             outputArea.value = compiledChartText;
 
             status.style.color = "#00ffcc";
-            status.innerText = `SYSTEM STATUS: SUCCESS (${notes.length} NOTES TRANSLATED)`;
+            status.innerText = `SYSTEM STATUS: SUCCESS (${notes.length} STANDARD NOTES PARSED)`;
             copyBtn.disabled = false;
             downloadBtn.disabled = false;
         }
