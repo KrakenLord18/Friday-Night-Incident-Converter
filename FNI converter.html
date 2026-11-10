@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tomophobia FNI Paste Converter</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0c0c10;
+            color: #e2e8f0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: #15151e;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            border: 1px solid #262636;
+        }
+        h1 {
+            color: #ff3344;
+            text-align: center;
+            margin-top: 0;
+        }
+        p {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        .status-badge {
+            background: #20202d;
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-family: monospace;
+            color: #00ffcc;
+            margin-bottom: 20px;
+            border-left: 4px solid #ff3344;
+            font-weight: bold;
+        }
+        .panels-wrapper {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            margin-top: 15px;
+        }
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        label {
+            font-weight: bold;
+            color: #94a3b8;
+            font-size: 0.9rem;
+        }
+        textarea {
+            width: 100%;
+            height: 420px;
+            background-color: #060609;
+            color: #2aff77;
+            border: 1px solid #323247;
+            border-radius: 6px;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            resize: vertical;
+            box-sizing: border-box;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        #inputJson {
+            color: #ffaa00;
+        }
+        button {
+            padding: 15px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-translate { background-color: #ffaa00; color: #0c0c10; width: 100%; margin-top: 10px; }
+        .btn-copy { background-color: #8b5cf6; color: white; flex: 1; }
+        .btn-download { background-color: #ff3344; color: white; flex: 1; }
+        .btn-group { display: flex; gap: 12px; margin-top: 20px; width: 100%; }
+        button:hover { opacity: 0.9; }
+        button:disabled { background-color: #2b2b3a; color: #666; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Tomophobia FNI Paste Converter</h1>
+    <p>Paste your chart code text directly into the left column box below, then click translate to parse your tracks sequentially.</p>
+    
+    <div id="status" class="status-badge">SYSTEM STATUS: READY (Awaiting JSON Data Input)</div>
+
+    <div class="panels-wrapper">
+        <div class="panel">
+            <label for="inputJson">1. Paste Raw FNF JSON Content Here:</label>
+            <textarea id="inputJson" placeholder='Paste your whole JSON tree here... (e.g. {"version": "2.0.0", "notes": ...})'></textarea>
+            <button id="translateBtn" class="btn-translate">Translate Pasted Text ➔</button>
+        </div>
+        
+        <div class="panel">
+            <label for="outputArea">2. Processed Scratch Engine List Output:</label>
+            <textarea id="outputArea" placeholder="Your converted blueprint text rows will generate here..." readonly></textarea>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button id="copyBtn" class="btn-copy" disabled>Copy List Data</button>
+        <button id="downloadBtn" class="btn-download" disabled>Download Chart File (.txt)</button>
+    </div>
+</div>
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        const inputJson = document.getElementById('inputJson');
+        const outputArea = document.getElementById('outputArea');
+        const status = document.getElementById('status');
+        const translateBtn = document.getElementById('translateBtn');
+        const copyBtn = document.getElementById('copyBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let compiledChartText = "";
+        let globalExtractedNotes = [];
+
+        translateBtn.addEventListener('click', () => {
+            const rawText = inputJson.value.trim();
+            if (!rawText) {
+                alert("Please paste your chart text string inside the input box first.");
+                return;
+            }
+
+            status.style.color = "#ffaa00";
+            status.innerText = "SYSTEM STATUS: PROCESSING PAYLOAD...";
+
+            try {
+                let parsedData = JSON.parse(rawText);
+                parseChartStructure(parsedData);
+            } catch (err) {
+                status.style.color = "#ff3344";
+                status.innerText = "SYSTEM STATUS: CRASHED";
+                outputArea.value = "Syntax Format Processing Error:\nThe text pasted is not complete valid JSON layout code.\n\nError Message: " + err.message;
+                copyBtn.disabled = true;
+                downloadBtn.disabled = true;
+            }
+        });
+
+        function parseChartStructure(root) {
+            globalExtractedNotes = [];
+
+            if (root && root.notes) {
+                if (Array.isArray(root.notes)) {
+                    extractFromNoteArray(root.notes);
+                } else if (typeof root.notes === 'object') {
+                    for (let diffKey in root.notes) {
+                        if (root.notes.hasOwnProperty(diffKey) && Array.isArray(root.notes[diffKey])) {
+                            extractFromNoteArray(root.notes[diffKey]);
+                        }
+                    }
+                }
+            }
+
+            if (globalExtractedNotes.length === 0) {
+                status.style.color = "#ff3344";
+                status.innerText = "SYSTEM STATUS: 0 NOTES DISCOVERED";
+                outputArea.value = "Failed to translate.\nCould not discover standard arrow markers matching ('t' and 'd') attributes inside the pasted string.";
+                copyBtn.disabled = true;
+                downloadBtn.disabled = true;
+                return;
+            }
+
+            // Sort everything sequentially by timestamp
+            globalExtractedNotes.sort((a, b) => a.time - b.time);
+            renderOutput(globalExtractedNotes);
+        }
+
+        function extractFromNoteArray(arr) {
+            arr.forEach((item) => {
+                if (item && typeof item === 'object' && item.hasOwnProperty('t') && item.hasOwnProperty('d')) {
+                    let time = parseFloat(item.t);
+                    let rawLane = parseInt(item.d);
+                    let length = parseFloat(item.l) || 0;
+
+                    if (!isNaN(time) && !isNaN(rawLane)) {
+                        // SIDE SWAP ALIGNMENT BLUEPRINT:
+                        // Reverses note positioning channels (0-3 Enemy ↔ 4-7 Player)
+                        let fixedLane = 0;
+                        if (rawLane <= 3) {
+                            fixedLane = rawLane + 4; // Move Opponent to lanes 4-7
+                        } else {
+                            fixedLane = rawLane - 4; // Move Player to lanes 0-3
+                        }
+
+                        // Shift to base-1 index boundaries for Scratch lists (1-8)
+                        let scratchLane = fixedLane + 1;
+
+                        globalExtractedNotes.push({ time, lane: scratchLane, length });
+                    }
+                }
+            });
+        }
+
+        function renderOutput(notes) {
+            let outputLines = [];
+
+            notes.forEach(n => {
+                // Time gets scaled down into fractional seconds
+                let secondsTime = n.time / 1000;
+                
+                // Sustain length remains raw ms
+                let holdMsLength = n.length;
+
+                // Output Format layout style matching requirements: {Time}: {Lane}: {0}: {Length}
+                outputLines.push(`{${secondsTime.toFixed(3)}}: {${n.lane}}: {0}: {${holdMsLength.toFixed(3)}}`);
+            });
+
+            compiledChartText = outputLines.join('\n');
+            outputArea.value = compiledChartText;
+
+            status.style.color = "#00ffcc";
+            status.innerText = `SYSTEM STATUS: SUCCESS (${notes.length} NOTES TRANSLATED)`;
+            copyBtn.disabled = false;
+            downloadBtn.disabled = false;
+        }
+
+        copyBtn.addEventListener('click', () => {
+            outputArea.select();
+            document.execCommand('copy');
+            alert('Chart lines copied to clipboard!');
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const blob = new Blob([compiledChartText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pasted_scratch_chart.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    });
+</script>
+
+</body>
+</html>
